@@ -1,5 +1,7 @@
 .python-version
+*.lock
 *.toml
+*.pyc
 /.venv
 /venv
 /data/raw
