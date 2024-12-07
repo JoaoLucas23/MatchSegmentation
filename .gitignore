@@ -4,4 +4,4 @@
 *.pyc
 /.venv
 /venv
-/data/raw
+/data/*
