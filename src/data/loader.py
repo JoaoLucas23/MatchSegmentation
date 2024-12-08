@@ -39,7 +39,7 @@ class FramesLoader:
                 )
 
                 # Reduce frame rate
-                metadata_df, players_df = self._reduce_frame_rate(metadata_df, players_df, target_fps=5)
+                metadata_df, players_df = self._reduce_frame_rate(metadata_df, players_df,target_fps=5)
                 
                 # TODO: change_pitch_standards
                 # TODO: change_play_side
@@ -128,7 +128,7 @@ class FramesLoader:
 
         return metadata_df, filtered_players_df
 
-    def _reduce_frame_rate(self, target_fps=5, original_fps=25):
+    def _reduce_frame_rate(self, metadata_df, players_df, target_fps=5, original_fps=25):
         """
         Reduces the frame rate of the data by selecting the first frame
         of each interval to achieve the target FPS.
@@ -141,6 +141,7 @@ class FramesLoader:
             tuple: Reduced metadata and players DataFrames.
         """
         # Calculate the frame interval in terms of frames
+
         interval = original_fps / target_fps
 
         # Validate target frame rate
@@ -148,13 +149,13 @@ class FramesLoader:
             raise ValueError("Target FPS must be less than or equal to original FPS.")
 
         # Select the first frame of each interval
-        reduced_metadata_df = self.metadata_df[
-            (self.metadata_df["frame_id"] // interval).astype(int).diff().fillna(1).astype(bool)
+        reduced_metadata_df = metadata_df[
+            (metadata_df["frame_id"] // interval).astype(int).diff().fillna(1).astype(bool)
         ]
 
         # Filter players based on the reduced metadata frame IDs
-        reduced_players_df = self.players_df[
-            self.players_df["frame_id"].isin(reduced_metadata_df["frame_id"])
+        reduced_players_df = players_df[
+            players_df["frame_id"].isin(reduced_metadata_df["frame_id"])
         ]
 
         return reduced_metadata_df, reduced_players_df
