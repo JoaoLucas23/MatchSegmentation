@@ -4,6 +4,8 @@ from torch.utils.data import Dataset
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 
+from src.data.interval import process_interval
+
 class IntervalDataset(Dataset):
     def __init__(self, metadata_df, players_df, load=False, path='data/processed/', interval='frame'):
         """
@@ -98,7 +100,7 @@ class IntervalDataset(Dataset):
         with Pool(processes=num_workers) as pool:
             # Use tqdm for progress bar
             with tqdm(total=len(args), desc="Processing data") as pbar:
-                for graph in pool.imap_unordered(self.process_data, args):
+                for graph in pool.imap_unordered(process_interval, args):
                     data_list.append(graph)
                     pbar.update()
 
