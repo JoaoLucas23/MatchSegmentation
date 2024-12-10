@@ -71,7 +71,7 @@ class FramesLoader:
             metadata_df = make_serializable(metadata_df)
             players_df = make_serializable(players_df)
             
-            game_path = f"data/intermediate/{game_ids[i]}"
+            game_path = f"data/intermediate/{self.game_ids[i]}"
             os.makedirs(game_path, exist_ok=True)
 
             # Save the DataFrames
@@ -128,7 +128,7 @@ class FramesLoader:
 
         return metadata_df, filtered_players_df
 
-    def _reduce_frame_rate(self, metadata_df, players_df, target_fps=5, original_fps=25):
+    def _reduce_frame_rate(self, metadata_df, players_df, target_fps=5, original_fps=30):
         """
         Reduces the frame rate of the data by selecting the first frame
         of each interval to achieve the target FPS.
