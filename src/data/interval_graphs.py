@@ -27,9 +27,9 @@ def process_interval(args):
         vx, vy = row["vx"], row["vy"]
 
         # TODO: home ball feature
-        ball_team = row["home_ball"]   # Team affiliation of the ball
+        #ball_team = row["home_ball"]   # Team affiliation of the ball
 
-
+        # TODO: polar coordinates to ball or to goal
 
         node_features.append([x, y, vx, vy])
         node_team.append(row["team"])  # Team affiliation
@@ -46,9 +46,7 @@ def process_interval(args):
 
                 # Edge attributes: Eucledian distance between nodes
                 distance = ((node_features[i][0] - node_features[j][0]) ** 2 + (node_features[i][1] - node_features[j][1]) ** 2) ** 0.5
-
-
-                edge_attrs.append([same_team])
+                edge_attrs.append([distance])
 
     # Step 4: Convert lists to PyTorch tensors
     node_features = torch.tensor(node_features, dtype=torch.float)

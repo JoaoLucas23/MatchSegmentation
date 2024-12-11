@@ -1,6 +1,6 @@
 from tqdm.auto import tqdm
 import pandas as pd
-
+import os
 import gandula
 from gandula.export.dataframe import pff_frames_to_dataframe
 from gandula.features.pff import add_ball_speed, add_players_speed
@@ -39,7 +39,7 @@ class FramesLoader:
                 )
 
                 # Reduce frame rate
-                metadata_df, players_df = self._reduce_frame_rate(metadata_df, players_df,target_fps=5)
+                #metadata_df, players_df = self._reduce_frame_rate(metadata_df, players_df,target_fps=5)
                 
                 # TODO: change_pitch_standards
                 # TODO: change_play_side
@@ -71,7 +71,7 @@ class FramesLoader:
             metadata_df = make_serializable(metadata_df)
             players_df = make_serializable(players_df)
             
-            game_path = f"data/intermediate/{self.game_ids[i]}"
+            game_path = f"{path}/{self.game_ids[i]}"
             os.makedirs(game_path, exist_ok=True)
 
             # Save the DataFrames
