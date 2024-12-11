@@ -4,6 +4,7 @@ import os
 import gandula
 from gandula.export.dataframe import pff_frames_to_dataframe
 from gandula.features.pff import add_ball_speed, add_players_speed
+import pyarrow.parquet as pq
 
 class FramesLoader:
     def __init__(
@@ -28,8 +29,24 @@ class FramesLoader:
         for game_id in tqdm(self.game_ids, total=len(self.game_ids), desc="Loading frames"):
             if path:
                 metadata_df = pd.read_parquet(f"{path}/{game_id}/metadata.parquet")
-                players_df = pd.read_parquet(f"{path}/{game_id}/players.parquet")
+
+                reduced_metadata_df = self._reduce_frame_rate(metadata_df, target_fps=5, original_fps=30)
+
+                # read only rows with frame_id in metadata_df
+
+                frame_ids = reduced_metadata_df["frame_id"].astype(str).unique().tolist()
+
+                filters = [("frame_id", "in", frame_ids)]
+
+                # Read Parquet file with filtering
+                table = pq.read_table(f"{path}/{game_id}/players.parquet", filters=filters)
+
+                # Convert to Pandas DataFrame
+                players_df = table.to_pandas()
+
                 frames.append((metadata_df, players_df))
+                del metadata_df, players_df, reduced_metadata_df
+                
             else:
                 metadata_df, players_df = pff_frames_to_dataframe(
                     gandula.get_frames(
@@ -49,7 +66,7 @@ class FramesLoader:
                 players_df = add_ball_speed(players_df)
                 players_df = add_players_speed(players_df)
 
-            frames.append((metadata_df, players_df))
+                frames.append((metadata_df, players_df))
         
         self.frames = frames
 
@@ -128,7 +145,7 @@ class FramesLoader:
 
         return metadata_df, filtered_players_df
 
-    def _reduce_frame_rate(self, metadata_df, players_df, target_fps=5, original_fps=30):
+    def _reduce_frame_rate(self, metadata_df, target_fps=5, original_fps=30):
         """
         Reduces the frame rate of the data by selecting the first frame
         of each interval to achieve the target FPS.
@@ -142,23 +159,11 @@ class FramesLoader:
         """
         # Calculate the frame interval in terms of frames
 
-        interval = original_fps / target_fps
+        metadata_df['event_id'] = metadata_df['event_id'].ffill(limit=3)
+        metadata_df['event_id'] = metadata_df['event_id'].bfill(limit=3)
+        reduced_metadata_df = metadata_df.iloc[::6].reset_index(drop=True)
 
-        # Validate target frame rate
-        if interval < 1:
-            raise ValueError("Target FPS must be less than or equal to original FPS.")
-
-        # Select the first frame of each interval
-        reduced_metadata_df = metadata_df[
-            (metadata_df["frame_id"] // interval).astype(int).diff().fillna(1).astype(bool)
-        ]
-
-        # Filter players based on the reduced metadata frame IDs
-        reduced_players_df = players_df[
-            players_df["frame_id"].isin(reduced_metadata_df["frame_id"])
-        ]
-
-        return reduced_metadata_df, reduced_players_df
+        return reduced_metadata_df
 
     def _remove_set_pieces(
         self, metadata_df: pd.DataFrame, players_df: pd.DataFrame
