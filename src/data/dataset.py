@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 
-from src.data.interval import process_interval
+from src.data.interval_graphs import process_interval
 
 class IntervalDataset(Dataset):
     def __init__(self, metadata_df, players_df, load=False, path='data/processed/', interval='frame'):
@@ -19,6 +19,12 @@ class IntervalDataset(Dataset):
         self.metadata_df = metadata_df
         self.players_df = players_df
         self.interval = interval
+    
+        self.players_df["frame_id"] = self.players_df["frame_id"].astype(int)
+        self.metadata_df["frame_id"] = self.metadata_df["frame_id"].astype(int)
+        self.metadata_df["match_id"] = self.metadata_df["match_id"].astype(int)
+        self.players_df["match_id"] = self.players_df["match_id"].astype(int)
+
 
         if not load:
             self.data_list = self.process_data(interval)
@@ -46,14 +52,14 @@ class IntervalDataset(Dataset):
             frame_ids = merged_df["frame_id"].unique()
             return [
                 (frame_id, merged_df[merged_df["frame_id"] == frame_id])
-                for frame_id in frame_ids
+                for frame_id in tqdm(frame_ids, desc="Preparing arguments", total=len(frame_ids))
             ]
 
         elif interval == 'possession':
             possession_ids = merged_df["possession_id"].unique()
             return [
                 (possession_id, merged_df[merged_df["possession_id"] == possession_id])
-                for possession_id in possession_ids
+                for possession_id in tqdm(possession_ids, desc="Preparing arguments", total=len(possession_ids))
             ]
 
         elif 'n_seconds' in interval:
@@ -62,7 +68,7 @@ class IntervalDataset(Dataset):
             interval_ids = merged_df["interval_id"].unique()
             return [
                 (interval_id, merged_df[merged_df["interval_id"] == interval_id])
-                for interval_id in interval_ids
+                for interval_id in tqdm(interval_ids, desc="Preparing arguments", total=len(interval_ids))
             ]
 
         else:
@@ -81,13 +87,13 @@ class IntervalDataset(Dataset):
         """
         merged_df = pd.merge(
             self.players_df,
-            self.metadata_df[["frame_id", "match_id", "possession_id"]],
+            self.metadata_df[["frame_id", "match_id", "possession_id", "home_has_possession", ]],
             on=["frame_id", "match_id"],
             how="left",
         )
 
         # Handle missing possession_ids
-        merged_df["possession_id"] = merged_df["possession_id"].fillna(-1)
+        #merged_df["possession_id"] = merged_df["possession_id"].fillna(-1)
 
         # Prepare arguments for multiprocessing
         args = self.get_args(merged_df, interval)
@@ -96,7 +102,8 @@ class IntervalDataset(Dataset):
         data_list = []
 
         # Use multiprocessing to process data in parallel
-        num_workers = max(1, cpu_count() - 2)  # Leave one CPU free
+        num_workers = max(1, 4)
+        #print(f"Using {num_workers} workers for processing data")
         with Pool(processes=num_workers) as pool:
             # Use tqdm for progress bar
             with tqdm(total=len(args), desc="Processing data") as pbar:

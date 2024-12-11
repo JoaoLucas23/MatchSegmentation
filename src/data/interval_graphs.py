@@ -26,16 +26,15 @@ def process_interval(args):
         x, y = row["x"], row["y"]
         vx, vy = row["vx"], row["vy"]
 
-        # TODO: home ball feature
-        #ball_team = row["home_ball"]   # Team affiliation of the ball
+        ball_team = (row["home_has_possession"] and row["team"]=="home")   # Team affiliation of the ball
 
         # TODO: polar coordinates to ball or to goal
 
-        node_features.append([x, y, vx, vy])
+        node_features.append([x, y, vx, vy, ball_team])  # Node features
         node_team.append(row["team"])  # Team affiliation
 
         # Assign a unique ID to each node
-        node_id_map[idx] = row["player_id"]
+        node_id_map[idx] = len(node_id_map)
 
     # Step 3: Process edges (fully connected graph for simplicity)
     node_ids = list(node_id_map.values())
@@ -45,7 +44,9 @@ def process_interval(args):
                 edge_index.append([i, j])
 
                 # Edge attributes: Eucledian distance between nodes
-                distance = ((node_features[i][0] - node_features[j][0]) ** 2 + (node_features[i][1] - node_features[j][1]) ** 2) ** 0.5
+                xi, yi = node_features[i][0], node_features[i][1]
+                xj, yj = node_features[j][0], node_features[j][1]
+                distance = ((xi - xj) ** 2 + (yi - yj) ** 2) ** 0.5
                 edge_attrs.append([distance])
 
     # Step 4: Convert lists to PyTorch tensors
