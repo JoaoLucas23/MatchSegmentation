@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 
+from src.viz.graph import plot_graph
 from src.data.interval_graphs import process_interval
 
 class IntervalDataset(Dataset):
@@ -75,7 +76,7 @@ class IntervalDataset(Dataset):
             raise ValueError(f"Unknown interval type: {interval}")
 
 
-    def process_data(self, interval='frame'):
+    def process_data(self, interval='frame', fully_concted=False):
         """
         Processes the raw data and returns a list of PyTorch Data objects.
         
@@ -107,8 +108,13 @@ class IntervalDataset(Dataset):
         with Pool(processes=num_workers) as pool:
             # Use tqdm for progress bar
             with tqdm(total=len(args), desc="Processing data") as pbar:
-                for graph in pool.imap_unordered(process_interval, args):
+                for graph in pool.imap_unordered(process_interval, args, fully_concted=fully_concted):
                     data_list.append(graph)
                     pbar.update()
 
         return data_list
+
+    def view(self, idx: int = 0):
+        """Visualize a single interval graph."""
+        print(self.data_list[idx].x)
+        plot_graph(self.data_list[idx])

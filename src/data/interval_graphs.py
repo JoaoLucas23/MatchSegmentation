@@ -1,7 +1,7 @@
 import torch
 from torch_geometric.data import Data
 
-def process_interval(args):
+def process_interval(args, fully_connected=False):
     """
     Process a single interval and transform it into a PyTorch Geometric graph.
 
@@ -41,13 +41,14 @@ def process_interval(args):
     for i in node_ids:
         for j in node_ids:
             if i != j:
-                edge_index.append([i, j])
+                if fully_conected or (node_features[i][4] and node_features[j][4]):  # Connect if same team
+                    edge_index.append([i, j])
 
-                # Edge attributes: Eucledian distance between nodes
-                xi, yi = node_features[i][0], node_features[i][1]
-                xj, yj = node_features[j][0], node_features[j][1]
-                distance = ((xi - xj) ** 2 + (yi - yj) ** 2) ** 0.5
-                edge_attrs.append([distance])
+                    # Edge attributes: Eucledian distance between nodes
+                    xi, yi = node_features[i][0], node_features[i][1]
+                    xj, yj = node_features[j][0], node_features[j][1]
+                    distance = ((xi - xj) ** 2 + (yi - yj) ** 2) ** 0.5
+                    edge_attrs.append([distance])
 
     # Step 4: Convert lists to PyTorch tensors
     node_features = torch.tensor(node_features, dtype=torch.float)
