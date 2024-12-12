@@ -30,11 +30,11 @@ class FramesLoader:
             if path:
                 metadata_df = pd.read_parquet(f"{path}/{game_id}/metadata.parquet")
 
-                reduced_metadata_df = self._reduce_frame_rate(metadata_df, target_fps=5, original_fps=30)
+                metadata_df = self._reduce_frame_rate(metadata_df, target_fps=5, original_fps=30)
 
                 # read only rows with frame_id in metadata_df
 
-                frame_ids = reduced_metadata_df["frame_id"].astype(str).unique().tolist()
+                frame_ids = metadata_df["frame_id"].astype(str).unique().tolist()
 
                 filters = [("frame_id", "in", frame_ids)]
 
@@ -45,7 +45,7 @@ class FramesLoader:
                 players_df = table.to_pandas()
 
                 frames.append((metadata_df, players_df))
-                del metadata_df, players_df, reduced_metadata_df
+                del metadata_df, players_df
                 
             else:
                 metadata_df, players_df = pff_frames_to_dataframe(
@@ -159,8 +159,11 @@ class FramesLoader:
         """
         # Calculate the frame interval in terms of frames
 
-        metadata_df['event_id'] = metadata_df['event_id'].ffill(limit=3)
-        metadata_df['event_id'] = metadata_df['event_id'].bfill(limit=3)
+        metadata_df['possession_id'] = metadata_df['possession_id'].ffill(limit=2)
+        metadata_df['possession_id'] = metadata_df['possession_id'].bfill(limit=2)
+        metadata_df['event_id'] = metadata_df['event_id'].ffill(limit=2)
+        metadata_df['event_id'] = metadata_df['event_id'].bfill(limit=2)
+
         reduced_metadata_df = metadata_df.iloc[::6].reset_index(drop=True)
 
         return reduced_metadata_df
