@@ -47,19 +47,19 @@ class IntervalDataset(Dataset):
         dataset = torch.load(path)
         return dataset.data_list
 
-    def get_args(self, merged_df, interval):
+    def get_args(self, merged_df, interval, fully_connected):
         """Prepare arguments for multiprocessing based on the interval type."""
         if interval == 'frame':
             frame_ids = merged_df["frame_id"].unique()
             return [
-                (frame_id, merged_df[merged_df["frame_id"] == frame_id])
+                (frame_id, merged_df[merged_df["frame_id"] == frame_id], fully_connected)
                 for frame_id in tqdm(frame_ids, desc="Preparing arguments", total=len(frame_ids))
             ]
 
         elif interval == 'possession':
             possession_ids = merged_df["possession_id"].unique()
             return [
-                (possession_id, merged_df[merged_df["possession_id"] == possession_id])
+                (possession_id, merged_df[merged_df["possession_id"] == possession_id], fully_connected)
                 for possession_id in tqdm(possession_ids, desc="Preparing arguments", total=len(possession_ids))
             ]
 
@@ -68,7 +68,7 @@ class IntervalDataset(Dataset):
             merged_df['interval_id'] = (merged_df['elapsed_seconds'] // n).astype(int)
             interval_ids = merged_df["interval_id"].unique()
             return [
-                (interval_id, merged_df[merged_df["interval_id"] == interval_id])
+                (interval_id, merged_df[merged_df["interval_id"] == interval_id], fully_connected)
                 for interval_id in tqdm(interval_ids, desc="Preparing arguments", total=len(interval_ids))
             ]
 
@@ -76,43 +76,44 @@ class IntervalDataset(Dataset):
             raise ValueError(f"Unknown interval type: {interval}")
 
 
-    def process_data(self, interval='frame', fully_concted=False):
+    def process_data(self, interval='frame', fully_connected=False, num_workers=None):
         """
         Processes the raw data and returns a list of PyTorch Data objects.
-        
+
         Args:
             interval (str): Interval type ('frame', 'possession', or 'n_seconds').
+            fully_connected (bool): Whether the graph is fully connected.
+            num_workers (int, optional): Number of workers for multiprocessing. Defaults to cpu_count() - 1.
 
         Returns:
             list: A list of processed data objects.
         """
         merged_df = pd.merge(
             self.players_df,
-            self.metadata_df[["frame_id", "match_id", "possession_id", "home_has_possession", ]],
+            self.metadata_df[["frame_id", "match_id", "possession_id", "home_has_possession"]],
             on=["frame_id", "match_id"],
             how="left",
         )
 
-        # Handle missing possession_ids
-        #merged_df["possession_id"] = merged_df["possession_id"].fillna(-1)
-
         # Prepare arguments for multiprocessing
-        args = self.get_args(merged_df, interval)
+        args = self.get_args(merged_df, interval, fully_connected)
+
+        # Default to cpu_count() - 1 if num_workers is not provided
+        if num_workers is None:
+            num_workers = max(1, cpu_count() - 1)
 
         # Initialize list for processed data
         data_list = []
 
         # Use multiprocessing to process data in parallel
-        num_workers = max(1, 4)
-        #print(f"Using {num_workers} workers for processing data")
         with Pool(processes=num_workers) as pool:
-            # Use tqdm for progress bar
             with tqdm(total=len(args), desc="Processing data") as pbar:
-                for graph in pool.imap_unordered(process_interval, args, fully_concted=fully_concted):
+                for graph in pool.imap_unordered(process_interval, args):
                     data_list.append(graph)
                     pbar.update()
 
         return data_list
+
 
     def view(self, idx: int = 0):
         """Visualize a single interval graph."""

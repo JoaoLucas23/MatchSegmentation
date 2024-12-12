@@ -30,6 +30,8 @@ class FramesLoader:
             if path:
                 metadata_df = pd.read_parquet(f"{path}/{game_id}/metadata.parquet")
 
+                metadata_df = metadata_df.dropna(subset=["home_has_possession"]).reset_index(drop=True)
+
                 metadata_df = self._reduce_frame_rate(metadata_df, target_fps=5, original_fps=30)
 
                 # read only rows with frame_id in metadata_df
