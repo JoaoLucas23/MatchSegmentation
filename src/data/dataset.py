@@ -7,8 +7,8 @@ from tqdm import tqdm
 from src.viz.graph import plot_graph
 from src.data.interval_graphs import process_interval
 
-class IntervalDataset(Dataset):
-    def __init__(self, metadata_df, players_df, load=False, path='data/processed/', interval='frame'):
+class GraphStreamDataset(Dataset):
+    def __init__(self, metadata_df, players_df, load=False, path='data/processed/', match_id=None, interval='frame'):
         """
         Args:
             metadata_df (pd.DataFrame): Metadata DataFrame.
@@ -17,20 +17,21 @@ class IntervalDataset(Dataset):
             path (str): Path to save/load processed data.
             interval (str): Interval type ('frame', 'possession', or 'n_seconds').
         """
-        self.metadata_df = metadata_df
-        self.players_df = players_df
-        self.interval = interval
-    
-        self.players_df["frame_id"] = self.players_df["frame_id"].astype(int)
-        self.metadata_df["frame_id"] = self.metadata_df["frame_id"].astype(int)
-        self.metadata_df["match_id"] = self.metadata_df["match_id"].astype(int)
-        self.players_df["match_id"] = self.players_df["match_id"].astype(int)
-
-
         if not load:
+            self.metadata_df = metadata_df
+            self.players_df = players_df
+            self.interval = interval
+        
+            self.players_df["frame_id"] = self.players_df["frame_id"].astype(int)
+            self.metadata_df["frame_id"] = self.metadata_df["frame_id"].astype(int)
+            self.metadata_df["match_id"] = self.metadata_df["match_id"].astype(int)
+            self.players_df["match_id"] = self.players_df["match_id"].astype(int)
+
+            self.match_id = self.metadata_df["match_id"].values[0]
+        
             self.data_list = self.process_data(interval)
         else:
-            self.data_list = self.load_data(path)
+            self.data_list = self.load_data(path, match_id)
 
     def __len__(self):
         return len(self.data_list)
@@ -40,11 +41,11 @@ class IntervalDataset(Dataset):
 
     def save(self, path):
         """Save the dataset to disk."""
-        torch.save(self, path)
+        torch.save(self, path + f'/{self.match_id}.pt')
 
-    def load_data(self, path):
+    def load_data(self, path, match_id):
         """Load the dataset from disk."""
-        dataset = torch.load(path)
+        dataset = torch.load(path + f'/{self.match_id}.pt')
         return dataset.data_list
 
     def get_args(self, merged_df, interval, fully_connected):
@@ -114,8 +115,11 @@ class IntervalDataset(Dataset):
 
         return data_list
 
-
     def view(self, idx: int = 0):
         """Visualize a single interval graph."""
-        print(self.data_list[idx].x)
         plot_graph(self.data_list[idx])
+
+    def get_graph_stream(self):
+        """Return the graph stream."""
+        for data in self.data_list:
+            yield data
