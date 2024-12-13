@@ -49,7 +49,7 @@ def interval_to_graph(args):
         distance = attr[0]
         G.add_edge(i, j, distance=distance)
 
-    return G, interval_id
+    return G
 
 def calculate_distance(x1, y1, x2, y2):
     """Calcula distância Euclidiana entre dois pontos."""

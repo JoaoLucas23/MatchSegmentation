@@ -1,4 +1,8 @@
 import networkx as nx
+import pandas as pd
+from tqdm.auto import tqdm
+from multiprocessing import Pool, cpu_count
+
 from src.data.process_graphs import interval_to_graph
 from src.viz.graph import plot_graph
 
@@ -9,14 +13,13 @@ class GraphStream:
         else:
             self.metadata_df = df_tuple[0]
             self.players_df = df_tuple[1]
-            self.graphs = create_graphs(fully_connected=False)
+            self.graphs = self._create_graphs(fully_connected=False)
 
     def __len__(self):
         return len(self.graphs)
 
     def __getitem__(self, idx):
         return self.graphs[idx]
-
 
     def _get_args(self, merged_df, interval, fully_connected):
         """Prepare arguments for multiprocessing based on the interval type."""
@@ -46,7 +49,7 @@ class GraphStream:
         else:
             raise ValueError(f"Unknown interval type: {interval}")
 
-    def create_graphs(self, interval='frame', fully_connected=False):
+    def _create_graphs(self, interval='frame', fully_connected=False):
         """
         Processes the raw data and returns a list of PyTorch Data objects.
 
@@ -58,6 +61,11 @@ class GraphStream:
         Returns:
             list: A list of processed data objects.
         """
+        self.metadata_df["frame_id"] = self.metadata_df["frame_id"].astype(int)
+        self.players_df["frame_id"] = self.players_df["frame_id"].astype(int)
+        self.metadata_df["match_id"] = self.metadata_df["match_id"].astype(int)
+        self.players_df["match_id"] = self.players_df["match_id"].astype(int)
+
         merged_df = pd.merge(
             self.players_df,
             self.metadata_df[["frame_id", "match_id", "possession_id", "home_has_possession"]],
@@ -66,7 +74,7 @@ class GraphStream:
         )
 
         # Prepare arguments for multiprocessing
-        args = self.get_args(merged_df, interval, fully_connected)
+        args = self._get_args(merged_df, interval, fully_connected)
 
         # Default to cpu_count() - 1 if num_workers is not provided
         num_workers = max(1, cpu_count() - 2)
@@ -84,13 +92,15 @@ class GraphStream:
         del merged_df
         return data_list
 
-    def view(self, idx: int | [int] = 0):
+    def view(self, idx: int | list[int] = 0):
         """Visualize a single interval graph."""
 
         if isinstance(idx, int):
             plot_graph(self.graphs[idx])
         else:
-            plot_graph_sequence(self.graphs[idx])
+            selected_graphs = [self.graphs[i] for i in idx]
+            plot_graph_sequence(selected_graphs)
+            del selected_graphs
 
     def get_graph_stream(self):
         """Return the graph stream."""
