@@ -2,6 +2,7 @@ import networkx as nx
 import pandas as pd
 from tqdm.auto import tqdm
 from multiprocessing import Pool, cpu_count
+import pickle
 
 from src.data.process_graphs import interval_to_graph
 from src.viz.graph import plot_graph
@@ -9,7 +10,7 @@ from src.viz.graph import plot_graph
 class GraphStream:
     def __init__(self, df_tuple: tuple | None = None, fully_conected: bool = False, path: str | None = None):
         if path:
-            self.graphs = load_data(path)
+            self.graphs = self._load_graphs(path)
         else:
             self.metadata_df = df_tuple[0]
             self.players_df = df_tuple[1]
@@ -91,6 +92,20 @@ class GraphStream:
 
         del merged_df
         return data_list
+
+    def _load_graphs(self, path: str):
+        """Load graphs from a given path."""
+        with open(path, 'rb') as f:
+            graphs = pickle.load(f)
+        return graphs
+
+    def save(self, path: str, file_name: str):
+        """Save the graph stream to a given path as picle."""
+
+        path = f"{path}/{file_name}.pkl"
+
+        with open(path, 'wb') as f:
+            pickle.dump(self.graphs, f)
 
     def view(self, idx: int | list[int] = 0):
         """Visualize a single interval graph."""
