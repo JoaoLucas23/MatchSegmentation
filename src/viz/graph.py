@@ -1,47 +1,77 @@
 import matplotlib.pyplot as plt
 import networkx as nx
-from torch_geometric.utils import to_networkx
+import imageio
+import os
 
-def plot_graph(data):
+def plot_graph(G, show=True):
     """
-    Plots the graph with nodes separated by team
+    Plota um grafo NetworkX, separando os nós por cor de acordo com o atributo 'ball_team'.
 
     Args:
-        data: PyTorch Geometric Data object containing graph information.
+        G (networkx.Graph): Grafo com atributos de nós 'x', 'y', 'ball_team', etc.
+        show (bool): Se True, mostra o plot interativamente. Se False, apenas cria o plot (para salvar).
     """
-    # Convert to NetworkX graph
-    G = to_networkx(data, to_undirected=True)
+    # Extrai a posição dos nós a partir dos atributos x, y
+    pos = {n: (d['x'], d['y']) for n, d in G.nodes(data=True)}
 
-    positions = data.x[:, :2].numpy()  # First two features are x and y coordinates
+    # Extrai o atributo ball_team para definir cor
+    ball_teams = nx.get_node_attributes(G, 'ball_team')
+    # Define as cores: vermelho para ball_team=1, azul para ball_team=0
+    colors = ['red' if ball_teams[n] == 1 else 'blue' for n in G.nodes()]
 
-    # Create a dictionary for node positions
-    pos = {i: (positions[i, 0], positions[i, 1]) for i in range(len(positions))}
+    # Título do gráfico
+    interval_id = G.graph.get('interval_id', 'unknown')
 
-    # Extract node features (team affiliation is the 4th feature: x[:, 3])
-    team_affiliation = data.x[:, 4].numpy()  # Convert to numpy for easy handling
-
-    # Separate nodes by team
-    team_1_nodes = [i for i, team in enumerate(team_affiliation) if team == 1]
-    team_0_nodes = [i for i, team in enumerate(team_affiliation) if team == 0]
-
-    # Define node colors: Red for team 1, Blue for team 0
-    color_map = []
-    for team in team_affiliation:
-        color_map.append('red' if team == 1 else 'blue')
-
-    # Layout to separate teams
-    #pos = nx.spring_layout(G, seed=42)  # You can try other layouts like bipartite_layout
-
-    # Plot the graph
     plt.figure(figsize=(10, 10))
     nx.draw(
         G,
         pos,
         with_labels=True,
         node_size=300,
-        node_color=color_map,
+        node_color=colors,
         edge_color="gray"
     )
-    plt.title(f"Interval ID: {data.interval_id}")
-    plt.show()
+    plt.title(f"Interval ID: {interval_id}")
 
+    if show:
+        plt.show()
+
+
+def plot_graph_sequence(graph_list, out_gif='sequence.gif', duration=0.5):
+    """
+    Plota uma sequência de grafos NetworkX (por exemplo, frames no tempo) e cria um GIF animado.
+
+    Args:
+        graph_list (list): Lista de grafos NetworkX. Cada grafo deve ter 'x', 'y' por nó e
+                           idealmente 'ball_team' e 'interval_id'.
+        out_gif (str): Nome do arquivo GIF de saída.
+        duration (float): Duração entre frames no GIF.
+    """
+    filenames = []
+
+    # Gera um frame (imagem) para cada grafo na lista
+    for i, G in enumerate(graph_list):
+        plt.figure(figsize=(10, 10))
+        pos = {n: (d['x'], d['y']) for n, d in G.nodes(data=True)}
+        ball_teams = nx.get_node_attributes(G, 'ball_team')
+        colors = ['red' if ball_teams[n] == 1 else 'blue' for n in G.nodes()]
+
+        nx.draw(G, pos, with_labels=True, node_size=300, node_color=colors, edge_color="gray")
+
+        interval_id = G.graph.get('interval_id', i)
+        plt.title(f"Interval ID: {interval_id}")
+
+        fname = f"frame_{i}.png"
+        plt.savefig(fname)
+        plt.close()
+        filenames.append(fname)
+
+    # Cria o GIF a partir dos frames salvos
+    with imageio.get_writer(out_gif, mode='I', duration=duration) as writer:
+        for filename in filenames:
+            image = imageio.imread(filename)
+            writer.append_data(image)
+
+    # Opcional: remover os arquivos temporários de frames
+    for filename in filenames:
+        os.remove(filename)
