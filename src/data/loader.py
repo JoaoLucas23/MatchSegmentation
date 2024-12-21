@@ -57,6 +57,8 @@ class FramesLoader:
                     )
                 )
 
+                metadata_df, players_df = self._filter_possessions(metadata_df, players_df)
+
                 # Reduce frame rate
                 #metadata_df, players_df = self._reduce_frame_rate(metadata_df, players_df,target_fps=5)
                 

@@ -14,7 +14,7 @@ class GraphStream:
         else:
             self.metadata_df = df_tuple[0]
             self.players_df = df_tuple[1]
-            self.graphs = self._create_graphs(fully_connected=False)
+            self.graphs = self._create_graphs(fully_connected=fully_conected)
 
     def __len__(self):
         return len(self.graphs)
@@ -74,6 +74,7 @@ class GraphStream:
             how="left",
         )
 
+        print(fully_connected)
         # Prepare arguments for multiprocessing
         args = self._get_args(merged_df, interval, fully_connected)
 
@@ -111,9 +112,9 @@ class GraphStream:
         """Visualize a single interval graph."""
 
         if isinstance(idx, int):
-            plot_graph(self.graphs[idx])
+            plot_graph(self.graphs[idx][0])
         else:
-            selected_graphs = [self.graphs[i] for i in idx]
+            selected_graphs = [self.graphs[i][0] for i in idx]
             plot_graph_sequence(selected_graphs)
             del selected_graphs
 
