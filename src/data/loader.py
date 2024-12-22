@@ -4,7 +4,11 @@ import os
 import gandula
 from gandula.export.dataframe import pff_frames_to_dataframe
 from gandula.features.pff import add_ball_speed, add_players_speed
+from multiprocessing import Pool
+import numpy as np
 import pyarrow.parquet as pq
+
+from src.data.process_game import process_game
 
 class FramesLoader:
     def __init__(
@@ -23,33 +27,25 @@ class FramesLoader:
 
     def load(self, path: str | None = None):
         """
-        
         """
-        frames = []
-        for game_id in tqdm(self.game_ids, total=len(self.game_ids), desc="Loading frames"):
-            if path:
-                metadata_df = pd.read_parquet(f"{path}/{game_id}/metadata.parquet")
 
-                metadata_df = metadata_df.dropna(subset=["home_has_possession"]).reset_index(drop=True)
+        if path:
+            frames = []
 
-                metadata_df = self._reduce_frame_rate(metadata_df, target_fps=5, original_fps=30)
+            tasks = [(game_id, path) for game_id in self.game_ids]
 
-                # read only rows with frame_id in metadata_df
+            num_workers = 2  # Leave one CPU free
+            with Pool(processes=num_workers) as pool:
+                # Use tqdm for progress bar
+                with tqdm(total=len(tasks), desc="Processing possessions") as pbar:
+                    for match_id in pool.imap_unordered(process_game, tasks):
+                        frames.append(match_id)
+                        pbar.update()
 
-                frame_ids = metadata_df["frame_id"].astype(str).unique().tolist()
-
-                filters = [("frame_id", "in", frame_ids)]
-
-                # Read Parquet file with filtering
-                table = pq.read_table(f"{path}/{game_id}/players.parquet", filters=filters)
-
-                # Convert to Pandas DataFrame
-                players_df = table.to_pandas()
-
-                frames.append((metadata_df, players_df))
-                del metadata_df, players_df
                 
-            else:
+        else:
+            for game_id in tqdm(self.game_ids, total=len(self.game_ids), desc="Loading frames"):
+
                 metadata_df, players_df = pff_frames_to_dataframe(
                     gandula.get_frames(
                         self.data_path,
@@ -57,7 +53,7 @@ class FramesLoader:
                     )
                 )
 
-                metadata_df, players_df = self._filter_possessions(metadata_df, players_df)
+            #metadata_df, players_df = self._filter_possessions(metadata_df, players_df)
 
                 # Reduce frame rate
                 #metadata_df, players_df = self._reduce_frame_rate(metadata_df, players_df,target_fps=5)
@@ -149,33 +145,11 @@ class FramesLoader:
 
         return metadata_df, filtered_players_df
 
-    def _reduce_frame_rate(self, metadata_df, target_fps=5, original_fps=30):
-        """
-        Reduces the frame rate of the data by selecting the first frame
-        of each interval to achieve the target FPS.
-
-        Args:
-            target_fps (int): The desired frame rate after reduction.
-            original_fps (int): The original frame rate of the data.
-
-        Returns:
-            tuple: Reduced metadata and players DataFrames.
-        """
-        # Calculate the frame interval in terms of frames
-
-        metadata_df['possession_id'] = metadata_df['possession_id'].ffill(limit=2)
-        metadata_df['possession_id'] = metadata_df['possession_id'].bfill(limit=2)
-        metadata_df['event_id'] = metadata_df['event_id'].ffill(limit=2)
-        metadata_df['event_id'] = metadata_df['event_id'].bfill(limit=2)
-
-        reduced_metadata_df = metadata_df.iloc[::6].reset_index(drop=True)
-
-        return reduced_metadata_df
-
     def _remove_set_pieces(
         self, metadata_df: pd.DataFrame, players_df: pd.DataFrame
     ) -> tuple[pd.DataFrame, pd.DataFrame]:  # TODO: implement
         pass
+
 
     def __len__(self):
         return len(self.frames)
@@ -189,3 +163,6 @@ class FramesLoader:
 
     def __repr__(self):
         return f"<Frames: {len(self)} frames>"
+    
+
+

@@ -29,7 +29,7 @@ class Match:
     def __len__(self):
         return len(self.graph_stream)
 
-        def _get_graph_by_frame_id(self, stream, frame_id):
+    def _get_graph_by_frame_id(self, stream, frame_id):
         """
         Dado um GraphStream (ou lista de tuplas) e um frame_id,
         retorna o grafo correspondente ou None se não encontrado.

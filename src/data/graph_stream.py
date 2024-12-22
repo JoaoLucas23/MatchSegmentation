@@ -8,13 +8,13 @@ from src.data.process_graphs import interval_to_graph
 from src.viz.graph import plot_graph
 
 class GraphStream:
-    def __init__(self, df_tuple: tuple | None = None, fully_conected: bool = False, path: str | None = None):
+    def __init__(self, df_tuple: tuple | None = None, fully_connected: bool = False, path: str | None = None):
         if path:
             self.graphs = self._load_graphs(path)
         else:
             self.metadata_df = df_tuple[0]
             self.players_df = df_tuple[1]
-            self.graphs = self._create_graphs(fully_connected=fully_conected)
+            self.graphs = self._create_graphs(fully_connected=fully_connected)
 
     def __len__(self):
         return len(self.graphs)
@@ -74,7 +74,6 @@ class GraphStream:
             how="left",
         )
 
-        print(fully_connected)
         # Prepare arguments for multiprocessing
         args = self._get_args(merged_df, interval, fully_connected)
 
