@@ -1,7 +1,12 @@
 import pyarrow.parquet as pq
 import pandas as pd
+import numpy as np
 
-def process_game(args):
+import gandula
+from gandula.export.dataframe import pff_frames_to_dataframe
+from gandula.features.pff import add_ball_speed, add_players_speed
+
+def load_game(args):
     """Process a single game."""
     game_id, path = args
 
@@ -9,10 +14,10 @@ def process_game(args):
         metadata_df = pd.read_parquet(f"{path}/{game_id}/metadata.parquet")
         
         # Reduce frame rate
-        metadata_df_reduced = _reduce_frame_rate(metadata_df, target_fps=5, original_fps=30)
+        metadata_df_reduced = reduce_frame_rate(metadata_df, target_fps=5, original_fps=30)
 
-        # Fill frame ranges
-        #metadata_df_reduced = _fill_frame_ranges(metadata_df_reduced)
+        metadata_df_reduced = filter_invalid_frames(metadata_df)
+        metadata_df_reduced = remove_set_pieces(metadata_df_reduced)
 
         # Get unique frame IDs
         frame_ids = metadata_df_reduced["frame_id"].astype(str).unique().tolist()
@@ -30,7 +35,29 @@ def process_game(args):
     except Exception as e:
         return f"Error processing game_id {game_id}: {e}", None, None
     
-def _reduce_frame_rate(metadata_df, target_fps=5, original_fps=30):
+def process_game(args):
+
+    data_path, game_id = args
+
+    metadata_df, players_df = pff_frames_to_dataframe(
+        gandula.get_frames(
+            data_path,
+            game_id,
+        )
+    )
+
+    metadata_df_reduced = filter_invalid_frames(metadata_df)
+    metadata_df_reduced = remove_set_pieces(metadata_df_reduced)
+
+    metadata_df_reduced = reduce_frame_rate(metadata_df_reduced, target_fps=5, original_fps=30)
+    
+    # Add ball and players speed
+    players_df = add_ball_speed(players_df)
+    players_df = add_players_speed(players_df)
+
+    return metadata_df, metadata_df_reduced, players_df
+    
+def reduce_frame_rate(metadata_df, target_fps=5, original_fps=30):
     """
     Reduces the frame rate of the data by selecting the first frame
     of each interval to achieve the target FPS.
@@ -47,8 +74,6 @@ def _reduce_frame_rate(metadata_df, target_fps=5, original_fps=30):
 
     metadata_df['frame_id'] = metadata_df['frame_id'].astype(float)
 
-    print(f"Events: {metadata_df['event_id'].nunique()}")
-    print(f"Possessions: {metadata_df['possession_id'].nunique()}")
     
     # Identify rows where event_id or possession_id is not null
     key_rows = metadata_df[
@@ -70,22 +95,51 @@ def _reduce_frame_rate(metadata_df, target_fps=5, original_fps=30):
     # Combine key rows and downsampled null rows
     reduced_metadata_df = pd.concat([key_rows, downsampled_null_rows]).sort_index()
 
-    print(f"Reduced events: {reduced_metadata_df['event_id'].nunique()}")
-    print(f"Reduced possessions: {reduced_metadata_df['possession_id'].nunique()}")
+    reduced_metadata_df.drop_duplicates(subset='frame_id', keep='first', inplace=True)
 
     return reduced_metadata_df
     
-# def _fill_frame_ranges(df: pd.DataFrame) -> pd.DataFrame:
-#     # DataFrame de Eventos
-#     df_events = df.dropna(subset=['event_id']).reset_index(drop=True)
-#     df_possession = df.dropna(subset=['possession_id']).reset_index(drop=True)
+def filter_invalid_frames(df):
+    """
+    Filters out invalid frames, keeping rows with valid possession, event, 
+    or specific event types (e.g., ON_THE_BALL).
 
-#     for _, event in df_events.iterrows():
-#         df.loc[(df['frame_id'] >= event['event_start_frame']) & (df['frame_id'] <= event['event_end_frame']), 'event_id'] = event['event_id']
-#         df.loc[(df['frame_id'] >= event['event_start_frame']) & (df['frame_id'] <= event['event_end_frame']), 'event_type'] = event['event_type']
+    Args:
+        df (pd.DataFrame): Input DataFrame with tracking data.
 
-#     for _, possession in df_possession.iterrows():
-#         df.loc[(df['frame_id'] >= possession['possession_start_frame']) & (df['frame_id'] <= possession['possession_end_frame']), 'possession_id'] = possession['possession_id']
-#         df.loc[(df['frame_id'] >= possession['possession_start_frame']) & (df['frame_id'] <= possession['possession_end_frame']), 'possession_type'] = possession['possession_type']
+    Returns:
+        pd.DataFrame: Filtered DataFrame with invalid rows removed.
+    """
+    # Ensure None values are treated as NaN for event and possession IDs
+    df['event_id'] = df['event_id'].replace([None], np.nan)
+    df['possession_id'] = df['possession_id'].replace([None], np.nan)
 
-#     return df
+    # Define masks
+    mask_otb = df['event_type'] == 'ON_THE_BALL'
+    mask_valid = (df['home_has_possession'].notna()) & (
+        (df['event_id'].notna()) | (df['possession_id'].notna())
+    )
+
+    # Combine masks and filter
+    filtered_df = df[mask_otb | mask_valid].reset_index(drop=True)
+    return filtered_df
+
+
+def remove_set_pieces(df):
+    """
+    Removes rows corresponding to set pieces based on the event_setpiece_type column.
+
+    Args:
+        df (pd.DataFrame): Input DataFrame with tracking data.
+
+    Returns:
+        pd.DataFrame: DataFrame with set piece rows removed.
+    """
+    # Ensure None values are treated consistently
+    df['event_setpiece_type'] = df['event_setpiece_type'].replace(
+        ['None', 'nan'], None
+    )
+
+    # Filter out rows with non-null set piece types
+    filtered_df = df[df['event_setpiece_type'].isnull()].reset_index(drop=True)
+    return filtered_df

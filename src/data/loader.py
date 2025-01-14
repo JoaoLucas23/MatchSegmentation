@@ -2,13 +2,12 @@ from tqdm.auto import tqdm
 import pandas as pd
 import os
 import gandula
-from gandula.export.dataframe import pff_frames_to_dataframe
-from gandula.features.pff import add_ball_speed, add_players_speed
+
 from multiprocessing import Pool
 import numpy as np
 import pyarrow.parquet as pq
 
-from src.data.process_game import process_game
+from src.data.process_game import process_game, load_game, filter_invalid_frames, remove_set_pieces, reduce_frame_rate
 
 class FramesLoader:
     def __init__(
@@ -37,36 +36,23 @@ class FramesLoader:
             num_workers = 2  # Leave one CPU free
             with Pool(processes=num_workers) as pool:
                 # Use tqdm for progress bar
-                with tqdm(total=len(tasks), desc="Processing possessions") as pbar:
-                    for match_id in pool.imap_unordered(process_game, tasks):
+                with tqdm(total=len(tasks), desc="Loading Games") as pbar:
+                    for match_id in pool.imap_unordered(load_game, tasks):
                         frames.append(match_id)
                         pbar.update()
 
                 
         else:
-            for game_id in tqdm(self.game_ids, total=len(self.game_ids), desc="Loading frames"):
+            frames = []
+            tasks = [(game_id, path) for game_id in self.game_ids]
 
-                metadata_df, players_df = pff_frames_to_dataframe(
-                    gandula.get_frames(
-                        self.data_path,
-                        game_id,
-                    )
-                )
-
-            #metadata_df, players_df = self._filter_possessions(metadata_df, players_df)
-
-                # Reduce frame rate
-                #metadata_df, players_df = self._reduce_frame_rate(metadata_df, players_df,target_fps=5)
-                
-                # TODO: change_pitch_standards
-                # TODO: change_play_side
-                # TODO: remove_set_pieces
-                
-                # Add ball and players speed
-                players_df = add_ball_speed(players_df)
-                players_df = add_players_speed(players_df)
-
-                frames.append((metadata_df, players_df))
+            num_workers = 2  # Leave one CPU free
+            with Pool(processes=num_workers) as pool:
+                # Use tqdm for progress bar
+                with tqdm(total=len(tasks), desc="Processing Games") as pbar:
+                    for match_id in pool.imap_unordered(process_game, tasks):
+                        frames.append(match_id)
+                        pbar.update()
         
         self.frames = frames
 
