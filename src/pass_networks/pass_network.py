@@ -14,7 +14,7 @@ def sequence_to_graph(args):
     
     # Filtra apenas as ações que geram arestas na rede
     edges_df = sequence_df[
-        sequence_df['possession_type'].isin(['PASS','CROSS','BALL_CARRY'])
+        sequence_df['possession_type'].isin(['PASS','BALL_CARRY'])
     ]
 
     # Processa arestas

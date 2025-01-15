@@ -1,168 +1,137 @@
-"""Exports data to pandas DataFrame."""
+import pyarrow.parquet as pq
+import pandas as pd
+import numpy as np
 
-from typing import Any
+import gandula
+from gandula.export.dataframe import pff_frames_to_dataframe
+from gandula.features.pff import add_ball_speed, add_players_speed
+from .process_events import get_match_events
 
-from pandas import DataFrame, json_normalize, merge
+def load_game(args):
+    """Process a single game."""
+    game_id, path = args
 
-from ..providers.pff.schema.tracking import PFF_Frame
-from ..schemas.frame.schema import GandulaFrame
-from ..visualization.view import pydantic_dump_options
+    try:
+        metadata_df = pd.read_parquet(f"{path}/{game_id}/metadata.parquet")
+        
+        metadata_df_reduced = pd.read_parquet(f"{path}/{game_id}/metadata_reduced.parquet")
 
+        players_df = pd.read_parquet(f"{path}/{game_id}/players.parquet")
 
-def _build_df(obj_list: list, dump_options: dict[str, Any] | None = None) -> DataFrame:
-    if dump_options is None:
-        dump_options = {}
-    options = {**pydantic_dump_options, **dump_options}
-    data = [obj.model_dump(**options) for obj in obj_list]
-    return json_normalize(data, sep='_')
+        events_df = pd.read_parquet(f"{path}/{game_id}/events.parquet")
 
+        return metadata_df, metadata_df_reduced, players_df, events_df
+    
+    except Exception as e:
+        return f"Error processing game_id {game_id}: {e}", None, None
+    
+def process_game(args):
 
-def _extract_players_ball_from_frames(
-    frames: list[PFF_Frame], *, smoothed: bool = False
-) -> list[dict[str, Any]]:
-    ball_key = 'ball_with_kalman' if smoothed else 'ball'
-    home_key = 'home_players_with_kalman' if smoothed else 'home_players'
-    away_key = 'away_players_with_kalman' if smoothed else 'away_players'
+    data_path, game_id = args
 
-    player_dump_options = {'exclude': {'shirt_confidence', 'visibility'}}
-    ball_dump_options = {'exclude': {'visibility'}}
-
-    extracted_frames = []
-
-    for frame in frames:
-        home_players = getattr(frame, home_key, [])
-        away_players = getattr(frame, away_key, [])
-
-        home = [
-            {**player.model_dump(**player_dump_options), 'team': 'home'}
-            for player in home_players
-        ]
-        away = [
-            {**player.model_dump(**player_dump_options), 'team': 'away'}
-            for player in away_players
-        ]
-
-        ball = getattr(frame, ball_key, None)
-        if ball:
-            if isinstance(ball, list):
-                ball = ball[0]
-            ball_data = [ball.model_dump(**ball_dump_options)]
-        else:
-            ball_data = []
-
-        players = home + away
-        id = frame.frame_id
-
-        extracted_frames.append({'frame_id': id, 'players': players, 'ball': ball_data})
-
-    return extracted_frames
-
-
-def _build_players_ball_df(
-    frames: list[PFF_Frame], *, smoothed: bool = False
-) -> DataFrame:
-    dump_options = {'include': {'match_id', 'frame_id', 'period', 'elapsed_seconds'}}
-
-    frame_df = _build_df(frames, dump_options)
-
-    coordinates = _extract_players_ball_from_frames(frames, smoothed=smoothed)
-    players_df = json_normalize(
-        data=coordinates,
-        record_path='players',
-        meta=['frame_id'],
-        sep='_',
-    )
-    ball_df = json_normalize(
-        data=coordinates,
-        record_path='ball',
-        record_prefix='ball_',
-        meta=['frame_id'],
-        sep='_',
+    metadata_df, players_df = pff_frames_to_dataframe(
+        gandula.get_frames(
+            data_path,
+            game_id,
+        )
     )
 
-    players_ball_df = merge(players_df, ball_df, on='frame_id')
-    return frame_df.merge(players_ball_df, on='frame_id')
+    metadata_df_reduced = filter_invalid_frames(metadata_df)
+    metadata_df_reduced = remove_set_pieces(metadata_df_reduced)
 
+    metadata_df_reduced = reduce_frame_rate(metadata_df_reduced, target_fps=5, original_fps=30)
+    
+    # Add ball and players speed
+    players_df = add_ball_speed(players_df)
+    players_df = add_players_speed(players_df)
 
-def _build_metadata_df(frames: list[PFF_Frame]) -> DataFrame:
-    dump_options = {
-        'exclude': {
-            'ball',
-            'ball_with_kalman',
-            'home_players',
-            'away_players',
-            'home_players_with_kalman',
-            'away_players_with_kalman',
-        },
-        'exclude_unset': False,
-        'exclude_defaults': False,
-        'exclude_none': False,
-    }
+    events_df = get_match_events(game_id)
 
-    df = _build_df(frames, dump_options)
+    return metadata_df, metadata_df_reduced, players_df, events_df
+    
+def reduce_frame_rate(metadata_df, target_fps=5, original_fps=30):
+    """
+    Reduces the frame rate of the data by selecting the first frame
+    of each interval to achieve the target FPS.
 
-    # Define the final columns
-    final_columns = [
-        'match_id',
-        'frame_id',
-        'period',
-        'elapsed_seconds',
-        'home_ball',
-        'event_id',
-        'event_game_event_type',
-        'event_setpiece_type',
-        'event_player_id',
-        'event_team_id',
-        'event_start_frame',
-        'event_end_frame',
-        'possession_id',
-        'possession_possession_event_type',
-        'possession_start_frame',
-        'possession_end_frame',
-        'sequence',
-        'version',
-        'video_time_milli',
-    ]
-
-    df = df.loc[:, final_columns]
-
-    # Rename columns
-    columns_to_rename = {
-        'home_ball': 'home_has_possession',
-        'event_game_event_type': 'event_type',
-        'possession_possession_event_type': 'possession_type',
-    }
-    df = df.rename(columns=columns_to_rename)
-
-    return df
-
-
-def pff_frames_to_dataframe(
-    frames: list[PFF_Frame] | list[GandulaFrame], **kwargs
-) -> tuple[DataFrame, DataFrame]:
-    """Splits PFF frames into metadata and player+ball dfs.
-
-    The PFF Frames collection is transformed into a DataFrame that contains
-    frame metadata and another DataFrame with players and ball coordinates.
-
-    Parameters:
-    - frames: List of PFF_Frame objects.
+    Args:
+        target_fps (int): The desired frame rate after reduction.
+        original_fps (int): The original frame rate of the data.
 
     Returns:
-    - A tuple containing the metadata DataFrame and the players plus ball DataFrame.
+        tuple: Reduced metadata and players DataFrames.
     """
-    pitch_size = None
-    pitch_center = None
-    if isinstance(frames[0], GandulaFrame):
-        pitch_size = frames[0].pitch_size
-        pitch_center = frames[0].pitch_center
-        frames = [frame.frame for frame in frames]
+    # Ensure the DataFrame is sorted by the relevant index (e.g., timestamp or frame)
+    metadata_df = metadata_df.sort_values('frame_id').reset_index(drop=True)
 
-    metadata_df = _build_metadata_df(frames)
-    players_ball_df = _build_players_ball_df(frames)
+    metadata_df['frame_id'] = metadata_df['frame_id'].astype(float)
 
-    if pitch_size is not None and pitch_center is not None:
-        metadata_df['pitch_size'] = [pitch_size] * len(metadata_df)
-        metadata_df['pitch_center'] = [pitch_center] * len(metadata_df)
+    
+    # Identify rows where event_id or possession_id is not null
+    key_rows = metadata_df[
+        ((metadata_df['event_id'].notna()) & (metadata_df['event_start_frame']==metadata_df['frame_id'])) |
+        ((metadata_df['possession_id'].notna()) & (metadata_df['possession_start_frame']==metadata_df['frame_id']))
+    ]
+    
+    # Identify rows where both event_id and possession_id are null
+    null_rows = metadata_df[
+        (metadata_df['event_id'].isna() | metadata_df['event_start_frame']!=metadata_df['frame_id']) &
+        (metadata_df['possession_id'].isna() | metadata_df['possession_start_frame']!=metadata_df['frame_id'])
+    ]
+    
+    step = original_fps // target_fps
 
-    return metadata_df, players_ball_df
+    # Downsample null rows to 5 FPS (keep every 6th row)
+    downsampled_null_rows = null_rows.iloc[::step]
+    
+    # Combine key rows and downsampled null rows
+    reduced_metadata_df = pd.concat([key_rows, downsampled_null_rows]).sort_index()
+
+    reduced_metadata_df.drop_duplicates(subset='frame_id', keep='first', inplace=True)
+
+    return reduced_metadata_df
+    
+def filter_invalid_frames(df):
+    """
+    Filters out invalid frames, keeping rows with valid possession, event, 
+    or specific event types (e.g., ON_THE_BALL).
+
+    Args:
+        df (pd.DataFrame): Input DataFrame with tracking data.
+
+    Returns:
+        pd.DataFrame: Filtered DataFrame with invalid rows removed.
+    """
+    # Ensure None values are treated as NaN for event and possession IDs
+    df['event_id'] = df['event_id'].replace([None], np.nan)
+    df['possession_id'] = df['possession_id'].replace([None], np.nan)
+
+    # Define masks
+    mask_otb = df['event_type'] == 'ON_THE_BALL'
+    mask_valid = (df['home_has_possession'].notna()) & (
+        (df['event_id'].notna()) | (df['possession_id'].notna())
+    )
+
+    # Combine masks and filter
+    filtered_df = df[mask_otb | mask_valid].reset_index(drop=True)
+    return filtered_df
+
+
+def remove_set_pieces(df):
+    """
+    Removes rows corresponding to set pieces based on the event_setpiece_type column.
+
+    Args:
+        df (pd.DataFrame): Input DataFrame with tracking data.
+
+    Returns:
+        pd.DataFrame: DataFrame with set piece rows removed.
+    """
+    # Ensure None values are treated consistently
+    df['event_setpiece_type'] = df['event_setpiece_type'].replace(
+        ['None', 'nan'], None
+    )
+
+    # Filter out rows with non-null set piece types
+    filtered_df = df[df['event_setpiece_type'].isnull()].reset_index(drop=True)
+    return filtered_df

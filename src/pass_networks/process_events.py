@@ -1,4 +1,5 @@
 import pandas as pd
+import gandula
 
 def events_to_df(events, match_id):
     """
@@ -73,3 +74,12 @@ def events_to_df(events, match_id):
     ])
 
     return df
+
+def get_match_events(match_id, *, api_url=None, api_key=None):
+    try:
+        events = gandula.get_match_events(
+            match_id, api_url, api_key
+        )
+        return events_to_df(events, match_id)
+    except Exception:
+        raise Exception(f'Error getting match events for match_id={match_id}')
