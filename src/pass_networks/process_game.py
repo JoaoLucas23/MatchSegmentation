@@ -1,7 +1,7 @@
 import pyarrow.parquet as pq
 import pandas as pd
 import numpy as np
-
+import os
 import gandula
 from gandula.export.dataframe import pff_frames_to_dataframe
 from gandula.features.pff import add_ball_speed, add_players_speed
@@ -42,8 +42,8 @@ def process_game(args):
     metadata_df_reduced = reduce_frame_rate(metadata_df_reduced, target_fps=5, original_fps=30)
     
     # Add ball and players speed
-    players_df = add_ball_speed(players_df)
-    players_df = add_players_speed(players_df)
+    players_df = add_ball_speed(players_df, desc=False)
+    players_df = add_players_speed(players_df, desc=False)
 
     events_df = get_match_events(game_id)
 
@@ -135,3 +135,26 @@ def remove_set_pieces(df):
     # Filter out rows with non-null set piece types
     filtered_df = df[df['event_setpiece_type'].isnull()].reset_index(drop=True)
     return filtered_df
+
+def save_game(metadata_df,players_df,events_df,path,game_id):
+    def make_serializable(df):
+        for col in df.columns:
+            if df[col].dtype == "object":
+                df[col] = df[col].apply(
+                    lambda x: x.name if hasattr(x, "name") else str(x)
+                )
+        return df
+
+    metadata_df["event_type"] = metadata_df["event_type"].apply(
+        lambda x: x.name if hasattr(x, "name") else str(x)
+    )
+    metadata_df = make_serializable(metadata_df)
+    players_df = make_serializable(players_df)
+    
+    game_path = f"{path}/{game_id}"
+    os.makedirs(game_path, exist_ok=True)
+
+    # Save the DataFrames
+    metadata_df.to_parquet(f"{game_path}/metadata.parquet", engine="fastparquet")
+    players_df.to_parquet(f"{game_path}/players.parquet", engine="fastparquet")
+    events_df.to_parquet(f"{game_path}/events.parquet", engine="fastparquet")
