@@ -42,8 +42,8 @@ def process_game(args):
     metadata_df_reduced = reduce_frame_rate(metadata_df_reduced, target_fps=5, original_fps=30)
     
     # Add ball and players speed
-    players_df = add_ball_speed(players_df, desc=False)
-    players_df = add_players_speed(players_df, desc=False)
+    #players_df = add_ball_speed(players_df, desc=False)
+    #players_df = add_players_speed(players_df, desc=False)
 
     events_df = get_match_events(game_id)
 

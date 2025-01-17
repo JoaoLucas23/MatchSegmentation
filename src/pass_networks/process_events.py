@@ -2,6 +2,7 @@ import pandas as pd
 import gandula
 from dotenv import load_dotenv
 import os
+import numpy as np
 
 load_dotenv()
 
@@ -30,6 +31,11 @@ def events_to_df(events, match_id):
                 passer = pass_event.passerPlayer.id if pass_event.passerPlayer else None
                 receiver = pass_event.receiverPlayer.id if pass_event.receiverPlayer else None
                 outcome = pass_event.passOutcomeType.value if pass_event.passOutcomeType else None
+
+                start_x = pass_event.passPointX
+                start_y = pass_event.passPointY
+                end_x = pass_event.receiverPointX
+                end_y = pass_event.receiverPointY
                 
                 row = {
                     "match_id": match_id,
@@ -38,7 +44,7 @@ def events_to_df(events, match_id):
                     "possession_id": possession_id,
                     "possession_type": "PASS",
                     "player_id": passer,
-                    "receiver": receiver,
+                    "receiver_id": receiver,
                     "outcome": outcome,
                     "carry_type": None
                 }
@@ -48,16 +54,18 @@ def events_to_df(events, match_id):
             elif possessionEvent.ballCarryEvent:
                 carry_event = possessionEvent.ballCarryEvent
                 carrier = carry_event.ballCarrierPlayer.id if carry_event.ballCarrierPlayer else None
+                #carrier_shirt = carry_event.ballCarrierPlayer.shirtNumber if carry_event.ballCarrierPlayer else None
                 dribble_outcome = carry_event.dribbleOutcomeType.value if carry_event.dribbleOutcomeType else None
                 carry_type = carry_event.ballCarryType.value if carry_event.ballCarryType else None
 
                 row = {
                     "match_id": match_id,
-                    "event_id": event_id,
+                    "team_id": team_id,
+                    "event_id": event_id, 
                     "possession_id": possession_id,
                     "possession_type": "CARRY",
                     "player_id": carrier,
-                    "receiver": None,
+                    "receiver_id": carrier,
                     "outcome": dribble_outcome,
                     "carry_type": carry_type
                 }
@@ -68,11 +76,12 @@ def events_to_df(events, match_id):
     # Converte a lista de dicionários em um DataFrame
     df = pd.DataFrame(rows, columns=[
         "match_id",
+        "team_id",
         "event_id",
         "possession_id",
         "possession_type",
         "player_id",
-        "receiver",
+        "receiver_id",
         "outcome",
         "carry_type"
     ])
@@ -87,6 +96,19 @@ def get_match_events(match_id):
             match_id=match_id, api_url=api_url, api_key=api_key
         )
         return events_to_df(events, match_id)
-    except:
-        print(f"Error processing match_id {match_id}")
+    except Exception as e:
+        print(f"Error processing match_id {match_id}: {e}")
         return pd.DataFrame()
+    
+
+def get_grouped_events(possession_events_df):
+
+    teams = possession_events_df['team_id'].unique()
+    
+    
+    home_df = possession_events_df[possession_events_df['team_id'] == teams[0]]
+    away_df = possession_events_df[possession_events_df['team_id'] == teams[1]]
+
+    home_pass_df = home_df.groupby(['player_id', 'receiver_id']).size().reset_index(name='count')
+    away_pass_df = away_df.groupby(['player_id', 'receiver_id']).size().reset_index(name='count')
+
