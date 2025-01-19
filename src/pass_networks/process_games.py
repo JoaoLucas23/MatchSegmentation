@@ -7,24 +7,6 @@ from gandula.export.dataframe import pff_frames_to_dataframe
 from gandula.features.pff import add_ball_speed, add_players_speed
 from .process_events import get_match_events
 
-def load_game(args):
-    """Process a single game."""
-    game_id, path = args
-
-    try:
-        metadata_df = pd.read_parquet(f"{path}/{game_id}/metadata.parquet")
-        
-        metadata_df_reduced = pd.read_parquet(f"{path}/{game_id}/metadata_reduced.parquet")
-
-        players_df = pd.read_parquet(f"{path}/{game_id}/players.parquet")
-
-        events_df = pd.read_parquet(f"{path}/{game_id}/events.parquet")
-
-        return metadata_df, metadata_df_reduced, players_df, events_df
-    
-    except Exception as e:
-        return f"Error processing game_id {game_id}: {e}", None, None
-    
 def process_game(args):
 
     data_path, game_id = args
@@ -36,105 +18,29 @@ def process_game(args):
         )
     )
 
-    metadata_df_reduced = filter_invalid_frames(metadata_df)
-    metadata_df_reduced = remove_set_pieces(metadata_df_reduced)
-
-    metadata_df_reduced = reduce_frame_rate(metadata_df_reduced, target_fps=5, original_fps=30)
-    
-    # Add ball and players speed
-    #players_df = add_ball_speed(players_df, desc=False)
-    #players_df = add_players_speed(players_df, desc=False)
-
     events_df = get_match_events(game_id)
 
-    return metadata_df, metadata_df_reduced, players_df, events_df
+    return game_id, process_metadata(metadata_df), players_df, events_df
+
+def load_game(args):
+    """Process a single game."""
+    path, game_id = args
+
+    print(f"{path}/{game_id}/metadata.parquet")
+
+    try:
+
+        events_df = pd.read_csv(f"{path}/{game_id}/events.csv")
+
+        metadata_df = pd.read_parquet(f"{path}/{game_id}/metadata.parquet")
+        
+        players_df = pd.read_parquet(f"{path}/{game_id}/players.parquet")
+
+        return metadata_df, players_df, events_df
     
-def reduce_frame_rate(metadata_df, target_fps=5, original_fps=30):
-    """
-    Reduces the frame rate of the data by selecting the first frame
-    of each interval to achieve the target FPS.
+    except Exception as e:
+        return f"Error processing game_id {game_id}: {e}", None, None
 
-    Args:
-        target_fps (int): The desired frame rate after reduction.
-        original_fps (int): The original frame rate of the data.
-
-    Returns:
-        tuple: Reduced metadata and players DataFrames.
-    """
-    # Ensure the DataFrame is sorted by the relevant index (e.g., timestamp or frame)
-    metadata_df = metadata_df.sort_values('frame_id').reset_index(drop=True)
-
-    metadata_df['frame_id'] = metadata_df['frame_id'].astype(float)
-
-    
-    # Identify rows where event_id or possession_id is not null
-    key_rows = metadata_df[
-        ((metadata_df['event_id'].notna()) & (metadata_df['event_start_frame']==metadata_df['frame_id'])) |
-        ((metadata_df['possession_id'].notna()) & (metadata_df['possession_start_frame']==metadata_df['frame_id']))
-    ]
-    
-    # Identify rows where both event_id and possession_id are null
-    null_rows = metadata_df[
-        (metadata_df['event_id'].isna() | metadata_df['event_start_frame']!=metadata_df['frame_id']) &
-        (metadata_df['possession_id'].isna() | metadata_df['possession_start_frame']!=metadata_df['frame_id'])
-    ]
-    
-    step = original_fps // target_fps
-
-    # Downsample null rows to 5 FPS (keep every 6th row)
-    downsampled_null_rows = null_rows.iloc[::step]
-    
-    # Combine key rows and downsampled null rows
-    reduced_metadata_df = pd.concat([key_rows, downsampled_null_rows]).sort_index()
-
-    reduced_metadata_df.drop_duplicates(subset='frame_id', keep='first', inplace=True)
-
-    return reduced_metadata_df
-    
-def filter_invalid_frames(df):
-    """
-    Filters out invalid frames, keeping rows with valid possession, event, 
-    or specific event types (e.g., ON_THE_BALL).
-
-    Args:
-        df (pd.DataFrame): Input DataFrame with tracking data.
-
-    Returns:
-        pd.DataFrame: Filtered DataFrame with invalid rows removed.
-    """
-    # Ensure None values are treated as NaN for event and possession IDs
-    df['event_id'] = df['event_id'].replace([None], np.nan)
-    df['possession_id'] = df['possession_id'].replace([None], np.nan)
-
-    # Define masks
-    mask_otb = df['event_type'] == 'ON_THE_BALL'
-    mask_valid = (df['home_has_possession'].notna()) & (
-        (df['event_id'].notna()) | (df['possession_id'].notna())
-    )
-
-    # Combine masks and filter
-    filtered_df = df[mask_otb | mask_valid].reset_index(drop=True)
-    return filtered_df
-
-
-def remove_set_pieces(df):
-    """
-    Removes rows corresponding to set pieces based on the event_setpiece_type column.
-
-    Args:
-        df (pd.DataFrame): Input DataFrame with tracking data.
-
-    Returns:
-        pd.DataFrame: DataFrame with set piece rows removed.
-    """
-    # Ensure None values are treated consistently
-    df['event_setpiece_type'] = df['event_setpiece_type'].replace(
-        ['None', 'nan'], None
-    )
-
-    # Filter out rows with non-null set piece types
-    filtered_df = df[df['event_setpiece_type'].isnull()].reset_index(drop=True)
-    return filtered_df
 
 def save_game(metadata_df,players_df,events_df,path,game_id):
     def make_serializable(df):
@@ -157,4 +63,26 @@ def save_game(metadata_df,players_df,events_df,path,game_id):
     # Save the DataFrames
     metadata_df.to_parquet(f"{game_path}/metadata.parquet", engine="fastparquet")
     players_df.to_parquet(f"{game_path}/players.parquet", engine="fastparquet")
-    events_df.to_parquet(f"{game_path}/events.parquet", engine="fastparquet")
+    events_df.to_csv(f"{game_path}/events.csv")
+
+def process_metadata(metadata_df):
+    max_seconds = metadata_df.loc[metadata_df['period']==1,'elapsed_seconds'].max()
+    metadata_df['seconds'] =  metadata_df['elapsed_seconds'] + (max_seconds * (metadata_df['period']-1))
+
+    metadata_df['interval_id'] =  (metadata_df['seconds']//120 )+ 1
+    metadata_df['interval_id'] = metadata_df['interval_id'].astype(int)
+
+    metadata_events_df = metadata_df[((metadata_df['frame_id']==metadata_df['possession_start_frame'])) & (metadata_df['event_setpiece_type'].isnull())]
+
+    metadata_events_df['frame_id'] = metadata_events_df['frame_id'].astype(int)
+    metadata_events_df['event_id'] = metadata_events_df['event_id'].astype(float)
+    metadata_events_df['event_start_frame'] = metadata_events_df['event_start_frame'].astype(float)
+    metadata_events_df['event_end_frame'] = metadata_events_df['event_end_frame'].astype(float)
+    metadata_events_df['possession_id'] = metadata_events_df['possession_id'].astype(float)
+    metadata_events_df['possession_start_frame'] = metadata_events_df['possession_start_frame'].astype(float)
+    metadata_events_df['possession_end_frame'] = metadata_events_df['possession_end_frame'].astype(float)
+    metadata_events_df['period'] = metadata_events_df['period'].astype(int)
+    metadata_events_df['match_id'] = metadata_events_df['match_id'].astype(int)
+
+    return metadata_events_df
+
