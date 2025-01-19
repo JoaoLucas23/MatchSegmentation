@@ -32,11 +32,6 @@ def events_to_df(events, match_id):
                 receiver = pass_event.receiverPlayer.id if pass_event.receiverPlayer else None
                 outcome = pass_event.passOutcomeType.value if pass_event.passOutcomeType else None
 
-                start_x = pass_event.passPointX
-                start_y = pass_event.passPointY
-                end_x = pass_event.receiverPointX
-                end_y = pass_event.receiverPointY
-                
                 row = {
                     "match_id": match_id,
                     "team_id": team_id,
@@ -48,7 +43,6 @@ def events_to_df(events, match_id):
                     "outcome": outcome,
                     "carry_type": None
                 }
-                rows.append(row)
 
             # Se for um CARRY
             elif possessionEvent.ballCarryEvent:
@@ -69,9 +63,25 @@ def events_to_df(events, match_id):
                     "outcome": dribble_outcome,
                     "carry_type": carry_type
                 }
-                rows.append(row)
+                
 
-            # Se quiser ignorar outros tipos de eventos, basta não fazer nada
+            elif possessionEvent.shootingEvent:
+                shooting_event = possessionEvent.shootingEvent
+                shooter = shooting_event.shooterPlayer.id if shooting_event.shooterPlayer else None
+
+                row = {
+                    "match_id": match_id,
+                    "team_id": team_id,
+                    "event_id": event_id, 
+                    "possession_id": possession_id,
+                    "possession_type": "SHOT",
+                    "player_id": shooter,
+                    "receiver_id": -1,
+                    "outcome": None,
+                    "carry_type": None
+                }
+
+        rows.append(row)
 
     # Converte a lista de dicionários em um DataFrame
     df = pd.DataFrame(rows, columns=[
