@@ -20,8 +20,8 @@ def create_team_graphs(passes_df, positions_df, interval_id):
       - Arestas dirigidas de player_id -> receiver_id (com 'weight' = count).
     """
     
-    passes_df = passes_df[passes_df['interval_id'] == interval_id].reset_index(drop=True)
-    positions_df = positions_df[positions_df['interval_id'] == interval_id].reset_index(drop=True)
+    passes_df = passes_df[(passes_df['interval_id'] == interval_id)&(passes_df['team_id'].notna())].reset_index(drop=True)
+    positions_df = positions_df[(positions_df['interval_id'] == interval_id)&(positions_df['team_id'].notna())].reset_index(drop=True)
 
     passes_df['team_id'] = passes_df['team_id'].astype(int)
     passes_df['shirt_number_player'] = passes_df['shirt_number_player'].astype(int)

@@ -20,13 +20,11 @@ def process_game(args):
 
     events_df = get_match_events(game_id)
 
-    return game_id, process_metadata(metadata_df), players_df, events_df
+    return process_metadata(metadata_df), players_df, events_df
 
 def load_game(args):
     """Process a single game."""
     path, game_id = args
-
-    print(f"{path}/{game_id}/metadata.parquet")
 
     try:
 
