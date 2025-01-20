@@ -71,3 +71,17 @@ def create_team_graphs(passes_df, positions_df, interval_id):
         graphs_dict[str(team)] = G
         
     return graphs_dict
+
+def calculate_metrics(graph, metrics):
+    """
+    Calcula métricas especificadas para um grafo.
+    
+    :param graph: O grafo a ser analisado (nx.Graph ou nx.DiGraph).
+    :param metrics: Um dicionário onde as chaves são os nomes das métricas
+                    e os valores são funções que calculam essas métricas.
+    :return: Um dicionário com os valores das métricas calculadas.
+    """
+    results = {}
+    for metric_name, metric_function in metrics.items():
+        results[metric_name] = metric_function(graph)
+    return results
