@@ -26,12 +26,13 @@ def create_team_graphs(passes_df, positions_df, interval_id):
     positions_df = positions_df[(positions_df['interval_id'] == interval_id)&(positions_df['team_id'].notna())].reset_index(drop=True)
 
     passes_df['team_id'] = passes_df['team_id'].astype(int)
-    passes_df['shirt_number_player'] = passes_df['shirt_number_player'].astype(int)
+    passes_df['player_shirt'] = passes_df['player_shirt'].astype(int)
+    passes_df['receiver_shirt'] = passes_df['receiver_shirt'].astype(int)
     positions_df['team_id'] = positions_df['team_id'].astype(int)
 
 
     # Identifica todos os times disponíveis no DF de passes
-    teams = passes_df['team_id'].unique()
+    teams = positions_df['team_id'].unique()
     graphs_dict = {}
 
     for team in teams:
@@ -61,8 +62,8 @@ def create_team_graphs(passes_df, positions_df, interval_id):
         # Adiciona as arestas a partir de sub_passes_df
         # Direção: player_id -> receiver_id, peso = count
         for row in sub_passes_df.itertuples():
-            source = row.shirt_number_player
-            target = row.shirt_number_receiver
+            source = row.player_shirt
+            target = row.receiver_shirt
             count = row.count
 
             # Cria a aresta com peso

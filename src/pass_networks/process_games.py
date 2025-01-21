@@ -20,6 +20,8 @@ def process_game(args):
 
     events_df = get_match_events(game_id)
 
+    events_df = events_df.drop_duplicates(subset=['event_id','possession_id']).reset_index(drop=True)
+
     return process_metadata(metadata_df), players_df, events_df
 
 def load_game(args):
@@ -70,7 +72,9 @@ def process_metadata(metadata_df):
     metadata_df['interval_id'] =  (metadata_df['seconds']//120 )+ 1
     metadata_df['interval_id'] = metadata_df['interval_id'].astype(int)
 
-    metadata_events_df = metadata_df[((metadata_df['frame_id']==metadata_df['possession_start_frame'])) & ((metadata_df['event_setpiece_type'].isnull())|(metadata_df['event_setpiece_type']=='GOAL_KICK'))]
+    metadata_df['event_setpiece_type'] = metadata_df['event_setpiece_type'].astype(str)
+
+    metadata_events_df = metadata_df[metadata_df['event_setpiece_type'].isin(['SetPieceType.KICK_OFF','SetPieceType.GOAL_KICK','nan', 'None'])]
 
     metadata_events_df['frame_id'] = metadata_events_df['frame_id'].astype(int)
     metadata_events_df['event_id'] = metadata_events_df['event_id'].astype(float)

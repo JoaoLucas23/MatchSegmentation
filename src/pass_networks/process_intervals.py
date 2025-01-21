@@ -6,15 +6,28 @@ import pickle
 
 def get_interval_graphs(passes_df, positions_df):
 
-    interval_ids = passes_df["interval_id"].unique()
+    interval_ids = positions_df["interval_id"].unique()
 
     # Initialize list for processed data
     graph_list = []
 
+    team_ids = positions_df['team_id'].unique()
+    match_id = positions_df['match_id'][0]
+
     for interval_id in tqdm(interval_ids, desc="Processing intervals", total=len(interval_ids)):
         interval_passes_df = passes_df[passes_df['interval_id'] == interval_id].reset_index(drop=True)
         interval_positions_df = positions_df[positions_df['interval_id'] == interval_id].reset_index(drop=True)
-        graph_list.append(create_team_graphs(interval_passes_df, interval_positions_df, interval_id))
+        graphs = create_team_graphs(interval_passes_df, interval_positions_df, interval_id)
+
+        for team in team_ids:
+            
+            graph = graphs[str(team)]
+            graph_list.append({
+                'match_id': match_id,
+                'interval_id': interval_id,
+                'team_id': team,
+                'graph': graph
+            })
 
     return graph_list
 
