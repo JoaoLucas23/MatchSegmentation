@@ -70,7 +70,7 @@ def process_metadata(metadata_df):
     metadata_df['interval_id'] =  (metadata_df['seconds']//120 )+ 1
     metadata_df['interval_id'] = metadata_df['interval_id'].astype(int)
 
-    metadata_events_df = metadata_df[((metadata_df['frame_id']==metadata_df['possession_start_frame'])) & (metadata_df['event_setpiece_type'].isnull())]
+    metadata_events_df = metadata_df[((metadata_df['frame_id']==metadata_df['possession_start_frame'])) & ((metadata_df['event_setpiece_type'].isnull())|(metadata_df['event_setpiece_type']=='GOAL_KICK'))]
 
     metadata_events_df['frame_id'] = metadata_events_df['frame_id'].astype(int)
     metadata_events_df['event_id'] = metadata_events_df['event_id'].astype(float)

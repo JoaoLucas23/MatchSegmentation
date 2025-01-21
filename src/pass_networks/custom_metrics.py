@@ -1,9 +1,10 @@
 import networkx as nx
 from scipy.stats import wasserstein_distance
 from networkx.algorithms.community import modularity, greedy_modularity_communities
+import numpy as np
+from tqdm.auto import tqdm
 
-
-def calculate_simrank(graph, C=0.8, max_iter=10, tol=1e-4):
+def calculate_simrank(graph, C=0.9, max_iter=250, tol=1e-5):
     """
     Calcula o SimRank para um grafo direcionado ou não.
     
@@ -13,32 +14,18 @@ def calculate_simrank(graph, C=0.8, max_iter=10, tol=1e-4):
     :param tol: Tolerância para convergência.
     :return: Dicionário com pares de nós e suas similaridades.
     """
+    #nodes = list(graph.nodes())
+    simrank = nx.simrank_similarity(graph, importance_factor=C, max_iterations=max_iter, tolerance=tol)
     nodes = list(graph.nodes())
-    simrank = { (u, v): 1.0 if u == v else 0.0 for u in nodes for v in nodes }
+    n = len(nodes)
+    sim_matrix = np.zeros((n, n))
 
-    for _ in range(max_iter):
-        prev_simrank = simrank.copy()
-        for u in nodes:
-            for v in nodes:
-                if u == v:
-                    continue
-                # Predecessores dos nós u e v
-                predecessors_u = list(graph.predecessors(u))
-                predecessors_v = list(graph.predecessors(v))
+    for i, u in enumerate(nodes):
+        for j, v in enumerate(nodes):
+            sim_matrix[i, j] = simrank[u][v]
 
-                if not predecessors_u or not predecessors_v:
-                    simrank[(u, v)] = 0.0
-                else:
-                    simrank[(u, v)] = (C / (len(predecessors_u) * len(predecessors_v))) * sum(
-                        prev_simrank[(p_u, p_v)] for p_u in predecessors_u for p_v in predecessors_v
-                    )
+    return np.mean(sim_matrix)
 
-        # Verificar convergência
-        diff = sum(abs(simrank[(u, v)] - prev_simrank[(u, v)]) for u in nodes for v in nodes)
-        if diff < tol:
-            break
-
-    return simrank
 
 def calculate_wasserstein_distance(G1, G2):
 
@@ -89,3 +76,35 @@ def calculate_ffl(G):
             ffl_count += len(second_order_succ & successors)
     return ffl_count
 
+def calculate_graph_distance(G1,G2, method='sum'):
+
+    if method == 'sum':
+        return nx.graph_edit_distance(G1, G2) + (1-calculate_simrank(G1, G2)) + calculate_wasserstein_distance(G1, G2)
+    elif method == 'avg':
+        return np.average([nx.graph_edit_distance(G1, G2), calculate_simrank(G1, G2), calculate_wasserstein_distance(G1, G2)])
+    elif method == 'max':
+        return max([nx.graph_edit_distance(G1, G2), calculate_simrank(G1, G2), calculate_wasserstein_distance(G1, G2)])
+    elif method == 'GED':
+        return nx.graph_edit_distance(G1, G2)
+    elif method == 'SimRank':
+        return 1-calculate_simrank(G1, G2)
+    elif method == 'Wasserstein':
+        return calculate_wasserstein_distance(G1, G2)
+    else:
+        raise ValueError("Método inválido. Escolha entre 'sum', 'avg', 'max', 'GED', 'SimRank' ou 'Wasserstein'.")
+
+def calculate_graph_distance_stream(graphs, method='sum'):
+    """
+    Calcula a distância entre os grafos em uma sequência.
+    
+    :param graphs: Uma lista de grafos (nx.Graph ou nx.DiGraph).
+    :param method: Método para calcular a distância entre os grafos.
+                   Opções: 'sum', 'avg', 'max', 'GED', 'SimRank', 'Wasserstein'.
+    :return: Uma lista com as distâncias entre os grafos consecutivos.
+    """
+    distances = []
+    for i in tqdm(range(len(graphs)-1), desc=f'Calculando {method}'):
+        G1 = graphs[i]
+        G2 = graphs[i+1]
+        distances.append(calculate_graph_distance(G1, G2, method))
+    return distances

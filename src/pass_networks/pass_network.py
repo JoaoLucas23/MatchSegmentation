@@ -1,6 +1,8 @@
 import numpy as np
 import networkx as nx
 
+from .custom_metrics import calculate_simrank, calculate_wasserstein_distance
+
 def create_team_graphs(passes_df, positions_df, interval_id):
     """
     Cria um grafo dirigido (NetworkX) para cada team_id encontrado em 'passes_df'.
