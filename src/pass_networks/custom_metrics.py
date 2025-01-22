@@ -56,10 +56,10 @@ def calculate_average_path_legth_target(graph, target=-1):
             continue
 
     # Calcular a média dos caminhos (ignorar os sem caminho)
-    if shortest_paths:
+    if shortest_paths and sum(shortest_paths) > 0:
         return sum(shortest_paths) / len(shortest_paths)
     else:
-        return 0.0
+        return float('inf')
     
 def calculate_modularity(G):
     communities = list(greedy_modularity_communities(G))
