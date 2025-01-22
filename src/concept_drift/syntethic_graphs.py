@@ -1,30 +1,58 @@
-import networkx as nx
-from ..pass_networks.custom_metrics import calculate_simrank, calculate_wasserstein_distance
+import numpy as np
+import pandas as pd
+from sklearn.datasets import make_classification
+import matplotlib.pyplot as plt
 
-def generate_synthetic_graphs_with_drift(num_graphs, num_nodes, probs_before_drift, probs_after_drift, drift_points):
-    graphs = []
-    current_prob = probs_before_drift[0]
-    drift_index = 0
+def generate_synthetic_data(n_samples=50, n_drifts=3, value_range=(0, 5)):
+    """
+    Generates a synthetic dataset with concept drifts.
 
-    for i in range(num_graphs):
-        if drift_index < len(drift_points) and i == drift_points[drift_index]:
-            current_prob = probs_after_drift[drift_index]
-            drift_index += 1
+    Parameters:
+        n_samples (int): Total number of samples in the dataset.
+        n_drifts (int): Number of drift points in the dataset.
+        value_range (tuple): Range of values for the generated data.
 
-        G = nx.erdos_renyi_graph(num_nodes, current_prob, directed=True)
-        graphs.append(G)
+    Returns:
+        tuple: A list containing the synthetic dataset and the drift points.
+    """
+    data = []
+    drift_points = []
 
-    return get_graphs_metrics(graphs)
+    remaining_samples = n_samples
+    for drift in range(n_drifts + 1):
+        # Determine the number of samples for this segment dynamically
+        if drift == n_drifts:
+            samples_in_segment = remaining_samples
+        else:
+            samples_in_segment = np.random.randint(1, remaining_samples // (n_drifts - drift + 1))
 
-def get_graphs_metrics(graphs):
-    return [calculate_syntenic_graph_metric(graphs[i], graphs[i+1]) for i in range(len(graphs)-1)]
+        remaining_samples -= samples_in_segment
 
-def calculate_syntenic_graph_metric(G1,G2):
-    # Calculate the graph edit distance between two graphs
+        # Generate the data for the segment
+        segment = np.random.uniform(value_range[0], value_range[1], samples_in_segment)
 
-    # np.average([nx.graph_edit_distance(G1, G2), calculate_simrank(G1, G2), calculate_wasserstein_distance(G1, G2)])
-    # max([nx.graph_edit_distance(G1, G2), calculate_simrank(G1, G2), calculate_wasserstein_distance(G1, G2)])
+        # Simulate a drift by adding a shift to the values
+        if drift > 0:
+            shift = np.random.uniform(0, 5)
+            segment += shift
+            drift_points.append(len(data))
 
-    return nx.graph_edit_distance(G1, G2) + (1-calculate_simrank(G1, G2)) + calculate_wasserstein_distance(G1, G2)
+        data.extend(segment)
 
+    return data, drift_points
 
+def draw_synthetic_data(synthetic_data, drift_points, detected_drifts=None):
+    # Visualize the drift points
+    plt.figure(figsize=(10, 6))
+    for drift in drift_points:
+        plt.axvline(x=drift, color='red', linestyle='--', label='Drift Point' if drift == drift_points[0] else "")
+
+    for drift in detected_drifts or []:
+        plt.axvline(x=drift, color='green', linestyle='--', label='Detected Drift' if drift == detected_drifts[0] else "")
+
+    plt.plot(range(len(synthetic_data)), synthetic_data, label='Feature 0')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Feature Value')
+    plt.title('Synthetic Data with Concept Drift')
+    plt.legend()
+    plt.show()

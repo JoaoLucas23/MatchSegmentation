@@ -65,16 +65,6 @@ def calculate_modularity(G):
     communities = list(greedy_modularity_communities(G))
     return modularity(G, communities)
 
-def calculate_ffl(G):
-    ffl_count = 0
-    for node in G.nodes:
-        # Encontrar sucessores e predecessores
-        successors = set(G.successors(node))
-        for succ in successors:
-            second_order_succ = set(G.successors(succ))
-            # Contar casos onde o terceiro nó fecha o FFL
-            ffl_count += len(second_order_succ & successors)
-    return ffl_count
 
 def calculate_graph_distance(G1,G2, method='sum'):
 

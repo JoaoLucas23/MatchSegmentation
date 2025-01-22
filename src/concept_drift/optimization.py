@@ -1,63 +1,91 @@
-import optuna
+from sklearn.model_selection import ParameterGrid
 from river import drift
-import networkx as nx
 import numpy as np
+from sklearn.metrics import precision_score, recall_score, f1_score
+import pandas as pd
 
-from .syntethic_graphs import generate_synthetic_graphs_with_drift
-
-def optimize_hyperparameters(objective, n_trials=100, direction='minimize'):
+def evaluate_drift_performance(drift_points, expected_drifts, data_stream=None, tolerance=3):
     """
-    Otimiza os hiperparâmetros de um modelo de detecção de mudanças.
+    Evaluates the performance of detected drift points against expected drift points.
+
+    Parameters:
+        drift_points (list): List of detected drift points.
+        expected_drifts (list): List of true drift points.
+        tolerance (int): Tolerance in samples for a drift to be considered correct.
+
+    Returns:
+        dict: Evaluation metrics (precision, recall, F1 score).
     """
-    # Criar estudo de otimização
-    study = optuna.create_study(direction=direction)
-    study.optimize(objective, n_trials=n_trials)
-
-    return study
-
-# Função para definir o espaço de busca dos hiperparâmetros
-def define_search_space(trial):
-    alpha = trial.suggest_loguniform('alpha', 1e-5, 1e-1)
-    window_size = trial.suggest_int('window_size', 50, 500)
-    stat_size = trial.suggest_int('stat_size', 10, 100)
-    return alpha, window_size, stat_size
-
-# Função-objetivo para otimização
-def objective(trial):
-    # Definir o espaço de busca dos parâmetros
-    alpha, window_size, stat_size = define_search_space(trial)
-    
-    # Inicializar o detector KSWIN com os parâmetros sugeridos
-    kswin = drift.KSWIN(alpha=alpha, window_size=window_size, stat_size=stat_size)
-
-    num_graphs = 50
-    num_nodes = 12
-    n_drifts = 4
-    probs_before_drift = [0.05, 0.15, 0.05, 0.2]
-    probs_after_drift = [0.15, 0.05, 0.2, 0.25]
-    drift_points = [np.random.randint(5, 35) for _ in range(n_drifts)]
-    
-    metrics = generate_synthetic_graphs_with_drift(num_graphs, num_nodes, probs_before_drift, probs_after_drift, drift_points)
-    
-    # Variáveis para avaliar o desempenho
-    detected_drifts = []
+    true_positives = 0
     false_positives = 0
-    expected_drifts = drift_points
-    
-    # Aplicar KSWIN nas métricas
-    for i, metric in enumerate(metrics):
-        kswin.update(metric)
-        if kswin.drift_detected:
-            detected_drifts.append(i)
-    
-    # Avaliar desempenho
-    for drift in detected_drifts:
-        if drift not in expected_drifts:
+    false_negatives = 0
+
+    matched = set()
+
+    for detected in drift_points:
+        if any(abs(detected - true) <= tolerance for true in expected_drifts if true not in matched):
+            true_positives += 1
+            matched.add(next(true for true in expected_drifts if abs(detected - true) <= tolerance))
+        else:
             false_positives += 1
-    
-    # Calcular métricas de desempenho
-    detection_rate = len(set(detected_drifts) & set(expected_drifts)) / len(expected_drifts)
-    false_positive_rate = false_positives / len(metrics)
-    
-    # Função objetivo a ser minimizada
-    return false_positive_rate - detection_rate
+
+    false_negatives = len(expected_drifts) - len(matched)
+
+    true_detection_rate = true_positives / len(expected_drifts) if len(expected_drifts) > 0 else 0
+    false_negatives_rate = false_negatives / len(data_stream) if len(data_stream) > 0 else 0
+    false_positives_rate = false_positives / len(expected_drifts) if len(expected_drifts) > 0 else 0
+
+    delay = sum(detected - expected for detected, expected in zip(drift_points, expected_drifts)) if expected_drifts else len(data_stream)
+    delay = abs(delay / len(drift_points)) if drift_points else len(data_stream)
+
+    precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
+    recall = true_positives / len(expected_drifts) if len(expected_drifts) > 0 else 0
+    f1 = (2 * precision * recall) / (precision + recall) if precision + recall > 0 else 0
+
+    return {
+        'true_detection_rate': true_detection_rate,
+        'false_negatives_rate': false_negatives_rate,
+        'false_positives_rate': false_positives_rate,
+        'delay': delay
+    }
+
+def optimize_drift_parameters(detection_function, metric_series, expected_drifts, param_grid):
+    """
+    Optimizes parameters for a drift detection function using a grid search with robust evaluation.
+
+    Parameters:
+        detection_function (function): Drift detection function to optimize.
+        metric_series (list): Series of metrics for drift detection.
+        param_grid (dict): Dictionary with parameters to optimize.
+        expected_drifts (list): List of known drift points for evaluation.
+
+    Returns:
+        dict: Best parameters and their corresponding evaluation metrics.
+    """
+
+    results = []
+
+    for params in ParameterGrid(param_grid):
+        try:
+            # Modify this check to log rather than skip invalid combinations
+            if 'ws' in params and 'ss' in params and params['ss'] >= params['ws']:
+                #print(f"Invalid params: {params}. Skipping as stat_size >= window_size.")
+                continue
+
+            drift_points = detection_function(metric_series, **params)
+            metrics = evaluate_drift_performance(drift_points, expected_drifts, data_stream=metric_series)
+            if len(drift_points) > 0:
+                results.append({
+                    'params': params,
+                    'detected_drifts': drift_points,
+                    'expected_drifts': expected_drifts,
+                    'true_detection_rate': metrics['true_detection_rate'],
+                    'false_negatives_rate': metrics['false_negatives_rate'],
+                    'false_positives_rate': metrics['false_positives_rate'],
+                    'delay': metrics['delay']
+                })
+
+        except Exception as e:
+            continue
+
+    return pd.DataFrame(results)
