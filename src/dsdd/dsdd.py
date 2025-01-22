@@ -16,7 +16,7 @@ import os
 import networkx as nx
 import math
 from random import shuffle
-from rulsif.change_detection import ChangeDetection
+from .change_detection import ChangeDetection
 from properties import RULSIF, Experiment, GBAD
 
 class DriftDetector:
