@@ -21,6 +21,20 @@ def events_to_df(events, match_id):
         event_id = event.id if event.id else None
         team_id = event.team.id if event.team else None
 
+        if not event.possessionEvents:
+            rows.append({
+                "match_id": match_id,
+                "team_id": team_id,
+                "event_id": event_id,
+                "possession_id": None,
+                "possession_type": None,
+                "player_id": None,
+                "receiver_id": None,
+                "outcome": None,
+                "carry_type": None
+            })
+            continue
+
         # Itera sobre cada posse (possessionEvent) dentro de event
         for possessionEvent in event.possessionEvents:
             possession_id = possessionEvent.id
@@ -43,9 +57,10 @@ def events_to_df(events, match_id):
                     "outcome": outcome,
                     "carry_type": None
                 }
+                rows.append(row)
 
             # Se for um CARRY
-            elif possessionEvent.ballCarryEvent:
+            if possessionEvent.ballCarryEvent:
                 carry_event = possessionEvent.ballCarryEvent
                 carrier = carry_event.ballCarrierPlayer.id if carry_event.ballCarrierPlayer else None
                 #carrier_shirt = carry_event.ballCarrierPlayer.shirtNumber if carry_event.ballCarrierPlayer else None
@@ -63,9 +78,10 @@ def events_to_df(events, match_id):
                     "outcome": dribble_outcome,
                     "carry_type": carry_type
                 }
+                rows.append(row)
                 
 
-            elif possessionEvent.shootingEvent:
+            if possessionEvent.shootingEvent:
                 shooting_event = possessionEvent.shootingEvent
                 shooter = shooting_event.shooterPlayer.id if shooting_event.shooterPlayer else None
 
@@ -80,8 +96,7 @@ def events_to_df(events, match_id):
                     "outcome": None,
                     "carry_type": None
                 }
-
-        rows.append(row)
+                rows.append(row)
 
     # Converte a lista de dicionários em um DataFrame
     df = pd.DataFrame(rows, columns=[
@@ -105,10 +120,11 @@ def get_match_events(match_id):
         events = gandula.get_match_events(
             match_id=match_id, api_url=api_url, api_key=api_key
         )
+
         return events_to_df(events, match_id)
     except Exception as e:
         print(f"Error processing match_id {match_id}: {e}")
-        return pd.DataFrame()
+        return -1
     
 
 def get_grouped_events(possession_events_df):

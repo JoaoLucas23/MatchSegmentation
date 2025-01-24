@@ -11,6 +11,11 @@ def process_game(args):
 
     data_path, game_id = args
 
+    events_df = get_match_events(game_id)
+
+    if not isinstance(events_df, pd.DataFrame) or events_df.empty:
+        return None, None, None
+
     metadata_df, players_df = pff_frames_to_dataframe(
         gandula.get_frames(
             data_path,
@@ -18,7 +23,7 @@ def process_game(args):
         )
     )
 
-    events_df = get_match_events(game_id)
+    
 
     events_df = events_df.drop_duplicates(subset=['event_id','possession_id']).reset_index(drop=True)
 
