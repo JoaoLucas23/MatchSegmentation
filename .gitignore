@@ -4,4 +4,6 @@
 *.pyc
 /.venv
 /venv
-/data/raw
+/.wsl_venv
+/wsl_venv
+/data/*
